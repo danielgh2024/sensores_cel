@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bienvenida</title>
+</head>
+<body>
+    <h1>Bienvenido</h1>
+    <button onclick="initCamera()">Activar Cámara</button>
+    <button onclick="capturePhoto()">Tomar Foto</button>
+    <video id="video" width="320" height="240" autoplay></video>
+    <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+    <script>
+        let stream;
+
+        async function initCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('getUserMedia no es compatible con este navegador.');
+                return;
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+            } catch (err) {
+                alert('Error al acceder a la cámara: ' + err.message);
+            }
+        }
+
+        function capturePhoto() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            stream.getTracks().forEach(track => track.stop());
+
+            canvas.toBlob(blob => {
+                const formData = new FormData();
+                formData.append('photo', blob, 'photo.png');
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                }).then(response => response.text())
+                  .then(result => alert(result));
+            });
+        }
+    </script>
+</body>
+</html>
