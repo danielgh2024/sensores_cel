@@ -3,72 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Three.js + WebXR + Mediapipe</title>
+    <title>Hand Tracking with Mediapipe and Three.js</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://threejs.org/examples/jsm/webxr/VRButton.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #coordinates {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 18px;
+            z-index: 10;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+        }
+    </style>
 </head>
 <body>
-    <div id="container"></div>
+    <div id="coordinates">X: 0, Y: 0</div>
     <script>
-        // Configuración de Three.js
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer();
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // Añadir un cubo simple
-        const geometry = new THREE.BoxGeometry();
-        const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        // Crear un plano que mostrará el video de la cámara como textura
+        const video = document.createElement('video');
+        video.setAttribute('autoplay', '');
+        video.setAttribute('playsinline', ''); // Necesario para iOS
+        const videoTexture = new THREE.VideoTexture(video);
+        const videoMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
+        const videoGeometry = new THREE.PlaneGeometry(2, 2);
+        const videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
+        videoMesh.position.z = -1;  // Mover el plano de video hacia atrás
+        scene.add(videoMesh);
+
+        // Añadir un cubo que se moverá con el dedo
+        const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+        const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
         const cube = new THREE.Mesh(geometry, material);
         scene.add(cube);
-        camera.position.z = 5;
 
-        // Configurar Mediapipe para detección de manos
+        camera.position.z = 1;
+
+        // Configuración de Mediapipe
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
         });
+
         hands.setOptions({
             maxNumHands: 1,
-            modelComplexity: 1,
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
         });
 
         hands.onResults(results => {
-            if (results.multiHandLandmarks) {
-                for (const landmarks of results.multiHandLandmarks) {
-                    // Aquí puedes mapear los landmarks de la mano a coordenadas 3D de Three.js
-                    const x = landmarks[0].x * 2 - 1;
-                    const y = landmarks[0].y * -2 + 1;
-                    const z = landmarks[0].z;
-                    cube.position.set(x, y, z);
-                }
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                const x = (landmarks[8].x * 2 - 1);
+                const y = -(landmarks[8].y * 2 - 1);
+
+                // Actualizar la posición del cubo
+                cube.position.set(x, y, 0);
+
+                // Mostrar las coordenadas en pantalla
+                const coordinatesDiv = document.getElementById('coordinates');
+                coordinatesDiv.innerText = `X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}`;
             }
         });
 
-        // Configurar la cámara para Mediapipe
-        const videoElement = document.createElement('video');
-        videoElement.style.display = 'none';
-        document.body.appendChild(videoElement);
-
-        const cameraUtils = new Camera(videoElement, {
+        // Iniciar la cámara trasera y enviar video a Mediapipe
+        const cameraUtils = new Camera(video, {
             onFrame: async () => {
-                await hands.send({ image: videoElement });
+                await hands.send({ image: video });
             },
             width: 640,
-            height: 480
+            height: 480,
+            facingMode: { exact: "environment" }  // Esto especifica el uso de la cámara trasera
         });
+
         cameraUtils.start();
 
-        // Animar la escena de Three.js
+        // Animación de Three.js
         function animate() {
             requestAnimationFrame(animate);
             renderer.render(scene, camera);
         }
         animate();
+
+        // Ajustar la escena al cambiar el tamaño de la ventana
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
